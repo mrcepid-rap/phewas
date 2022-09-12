@@ -1,0 +1,5 @@
+numpy~=1.23.1
+statsmodels~=0.13.2
+dxpy~=0.326.1
+setuptools~=60.2.0
+pandas~=1.4.3
