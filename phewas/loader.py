@@ -1,4 +1,6 @@
+from phewas import phewas_ingester
 from phewas.phewas import PheWAS
+from phewas.phewas_association_pack import PhewasProgramArgs, PhewasAssociationPack
 from runassociationtesting.module_loader import ModuleLoader
 
 
@@ -26,10 +28,6 @@ class LoadModule(ModuleLoader):
                                        "'mergecollapsevariants'",
                                   type=self.dxfile_input, dest='association_tarballs', required=True,
                                   metavar=example_dxfile)
-        self._parser.add_argument('--bgen_index',
-                                  help="list of bgen files and associated index/annotation",
-                                  type=self.dxfile_input, dest='bgen_index', required=True,
-                                  metavar=example_dxfile)
         self._parser.add_argument('--gene_ids',
                                   help="A valid ENST Gene ID OR Gene Symbol, or space-separated list of Symbols/IDs "
                                        "to extract carriers and phenotype/covariate information for. These ID(s) MUST "
@@ -37,9 +35,9 @@ class LoadModule(ModuleLoader):
                                   type=str, dest='gene_ids', required=True, nargs='+',
                                   metavar="GENE_ID")
 
-    def _parse_options(self) -> ExtractProgramArgs:
-        return ExtractProgramArgs(**vars(self._parser.parse_args(self._input_args.split())))
+    def _parse_options(self) -> PhewasProgramArgs:
+        return PhewasProgramArgs(**vars(self._parser.parse_args(self._input_args.split())))
 
-    def _ingest_data(self, parsed_options: ExtractProgramArgs) -> ExtractAssociationPack:
-        ingested_data = extract_ingester.ExtractIngestData(parsed_options)
+    def _ingest_data(self, parsed_options: PhewasProgramArgs) -> PhewasAssociationPack:
+        ingested_data = phewas_ingester.PhewasIngestData(parsed_options)
         return ingested_data.get_association_pack()
