@@ -13,11 +13,11 @@ class LoadModule(ModuleLoader):
     def start_module(self) -> None:
 
         # Start the extract variants tool
-        extract_tool = PheWAS(self.output_prefix, self.association_pack)
-        extract_tool.run_tool()
+        phewas_tool = PheWAS(self.output_prefix, self.association_pack)
+        phewas_tool.run_tool()
 
         # Retrieve outputs – all tools _should_ append to the outputs object so they can be retrieved here.
-        self.set_outputs(extract_tool.get_outputs())
+        self.set_outputs(phewas_tool.get_outputs())
 
     def _load_module_options(self) -> None:
 
@@ -33,7 +33,7 @@ class LoadModule(ModuleLoader):
                                        "to extract carriers and phenotype/covariate information for. These ID(s) MUST "
                                        "exist in the file provided to --transcript_index",
                                   type=str, dest='gene_ids', required=True, nargs='+',
-                                  metavar="GENE_ID")
+                                  metavar=("GENE_ID1", "GENE_ID2"))
 
     def _parse_options(self) -> PhewasProgramArgs:
         return PhewasProgramArgs(**vars(self._parser.parse_args(self._input_args.split())))
