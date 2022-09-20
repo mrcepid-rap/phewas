@@ -97,7 +97,7 @@ class PheWAS:
                                               mask_name=model)
 
         # Here we're collecting futures and writing the unformatted results at the same time
-        fieldnames = ['ENST', 'maskname', 'pheno', 'p_val_init', 'n_car', 'cMAC', 'n_model',
+        fieldnames = ['ENST', 'maskname', 'pheno_name', 'p_val_init', 'n_car', 'cMAC', 'n_model',
                       'p_val_full', 'effect', 'std_err', 'model_run']
         if self._association_pack.is_binary:
             fieldnames.extend(['n_noncar_affected', 'n_noncar_unaffected', 'n_car_affected', 'n_car_unaffected'])
@@ -195,7 +195,7 @@ class PheWAS:
                      'n_model': len(model_dictionary['IID']),
                      'ENST': gene,
                      'maskname': mask_name,
-                     'pheno': phenoname,
+                     'pheno_name': phenoname,
                      'p_val_full': 'NA',
                      'effect': 'NA',
                      'std_err': 'NA',
