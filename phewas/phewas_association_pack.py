@@ -10,6 +10,8 @@ from runassociationtesting.association_pack import AssociationPack, ProgramArgs
 class PhewasProgramArgs(ProgramArgs):
     association_tarballs: dxpy.DXFile
     gene_ids: List[str]
+    sparse_grm: dxpy.DXFile
+    sparse_grm_sample: dxpy.DXFile
 
 
 class PhewasAssociationPack(AssociationPack):
