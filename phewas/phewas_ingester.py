@@ -14,6 +14,9 @@ class PhewasIngestData(IngestData):
         # Put additional options/covariate processing required by this specific package here
         is_snp_tar, is_gene_tar, tarball_prefixes = self._ingest_tarballs(parsed_options.association_tarballs)
 
+        self._ingest_genetic_data(parsed_options.sparse_grm,
+                                  parsed_options.sparse_grm_sample)
+
         # Put additional covariate processing specific to this module here
         self.set_association_pack(PhewasAssociationPack(self.get_association_pack(),
                                                         is_snp_tar, is_gene_tar, tarball_prefixes,
@@ -68,3 +71,13 @@ class PhewasIngestData(IngestData):
                                             f'when running tarballs as batch...')
 
         return is_snp_tar, is_gene_tar, tarball_prefixes
+
+    @staticmethod
+    def _ingest_genetic_data(sparse_grm: dxpy.DXFile, sparse_grm_sample: dxpy.DXFile) -> None:
+        # Now grab all genetic data that I have in the folder /project_resources/genetics/
+        os.mkdir("genetics/")  # This is for legacy reasons to make sure all tests work...
+        # This is the sparse matrix
+        dxpy.download_dxfile(sparse_grm.get_id(),
+                             'genetics/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx')
+        dxpy.download_dxfile(sparse_grm_sample.get_id(),
+                             'genetics/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx.sampleIDs.txt')
