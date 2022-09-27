@@ -127,8 +127,6 @@ class PheWAS:
         self._extend_output(merge_glm_staar_runs(self._output_prefix, self._association_pack.is_snp_tar,
                                                  self._association_pack.is_gene_tar))
 
-        sys.exit(1)
-
     # I think this is the most efficient way to do this on a large memory machine where I can store everything in
     # one massive DataFrame. Everything else I have tried takes a very long time!
     @staticmethod
