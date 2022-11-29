@@ -17,6 +17,9 @@ class PhewasIngestData(IngestData):
         self._ingest_genetic_data(parsed_options.sparse_grm,
                                   parsed_options.sparse_grm_sample)
 
+        if is_snp_tar is False and is_gene_tar is False and parsed_options.gene_ids is None:
+            raise dxpy.AppError('Must provide gene IDs when NOT using a SNP/GENE tarball!')
+
         # Put additional covariate processing specific to this module here
         self.set_association_pack(PhewasAssociationPack(self.get_association_pack(),
                                                         is_snp_tar, is_gene_tar, tarball_prefixes,
