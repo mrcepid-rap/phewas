@@ -1,4 +1,3 @@
-import sys
 import csv
 from os.path import exists
 from typing import List
@@ -8,13 +7,13 @@ import pandas as pd
 import statsmodels.api as sm
 from statsmodels.tools.sm_exceptions import PerfectSeparationError
 
+from general_utilities.association_resources import process_snp_or_gene_tar, build_transcript_table, get_gene_id
+from general_utilities.linear_model.linear_model import load_tarball_linear_model
+from general_utilities.linear_model.proccess_model_output import process_linear_model_outputs, merge_glm_staar_runs, \
+    process_staar_outputs
+from general_utilities.linear_model.staar_model import staar_null, staar_genes
+from general_utilities.thread_utility.thread_utility import ThreadUtility
 from phewas.phewas_association_pack import PhewasAssociationPack
-from runassociationtesting.association_resources import process_snp_or_gene_tar, build_transcript_table, get_gene_id
-from runassociationtesting.linear_model import linear_model
-from runassociationtesting.linear_model.proccess_model_output import process_linear_model_outputs, \
-    merge_glm_staar_runs, process_staar_outputs
-from runassociationtesting.linear_model.staar_model import staar_genes, staar_null
-from runassociationtesting.thread_utility import ThreadUtility
 
 
 class PheWAS:
@@ -59,7 +58,7 @@ class PheWAS:
                                        thread_factor=2)
 
         for tarball_prefix in self._association_pack.tarball_prefixes:
-            thread_utility.launch_job(linear_model.load_tarball_linear_model,
+            thread_utility.launch_job(load_tarball_linear_model,
                                       tarball_prefix=tarball_prefix,
                                       is_snp_tar=self._association_pack.is_snp_tar,
                                       is_gene_tar=self._association_pack.is_gene_tar)
