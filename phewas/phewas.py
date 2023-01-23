@@ -62,9 +62,9 @@ class PheWAS:
                                       tarball_prefix=tarball_prefix,
                                       is_snp_tar=self._association_pack.is_snp_tar,
                                       is_gene_tar=self._association_pack.is_gene_tar)
-        future_results = thread_utility.collect_futures()
+
         genotype_packs = {}
-        for result in future_results:
+        for result in thread_utility:
             tarball_prefix, genotype_dict = result
             genotype_packs[tarball_prefix] = genotype_dict
 
@@ -107,8 +107,7 @@ class PheWAS:
                                          fieldnames=fieldnames)
 
         lm_stats_writer.writeheader()
-        future_results = thread_utility.collect_futures()
-        for result in future_results:
+        for result in thread_utility:
             finished_gene = result
             lm_stats_writer.writerow(finished_gene)
         lm_stats_file.close()
@@ -269,13 +268,11 @@ class PheWAS:
                                                   phenoname=phenoname,
                                                   has_gene_info=True)
 
-        future_results = thread_utility.collect_futures()
-
         # 3. Print a preliminary STAAR output
         print("Finalising STAAR outputs...")
         completed_staar_files = []
         # And gather the resulting futures
-        for result in future_results:
+        for result in thread_utility:
             tarball_prefix, finished_chromosome, phenoname = result
             completed_staar_files.append(
                 f'{tarball_prefix}.{phenoname}.{finished_chromosome}.STAAR_results.tsv')
