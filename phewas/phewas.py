@@ -12,7 +12,7 @@ from general_utilities.linear_model.linear_model import load_tarball_linear_mode
 from general_utilities.linear_model.proccess_model_output import process_linear_model_outputs, merge_glm_staar_runs, \
     process_staar_outputs
 from general_utilities.linear_model.staar_model import staar_null, staar_genes
-from general_utilities.thread_utility.thread_utility import ThreadUtility
+from general_utilities.job_management.thread_utility import ThreadUtility
 from phewas.phewas_association_pack import PhewasAssociationPack
 
 

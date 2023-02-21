@@ -44,7 +44,7 @@ class LoadModule(ModuleLoader):
                                   metavar=example_dxfile)
 
     def _parse_options(self) -> PhewasProgramArgs:
-        return PhewasProgramArgs(**vars(self._parser.parse_args(self._input_args.split())))
+        return PhewasProgramArgs(**vars(self._parser.parse_args(self._split_options(self._input_args))))
 
     def _ingest_data(self, parsed_options: PhewasProgramArgs) -> PhewasAssociationPack:
         ingested_data = phewas_ingester.PhewasIngestData(parsed_options)
