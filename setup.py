@@ -12,10 +12,10 @@ def load_requirements(fname: Path):
 
 setup(
     name='phewas',
-    version='1.0.0',
+    version='1.0.1',
     packages=find_packages(),
     url='https://github.com/mrcepid-rap/mrcepid-runassociationtesting-phewas',
-    license='',
+    license='MIT',
     author='Eugene Gardner',
     author_email='eugene.gardner@mrc-epid.cam.ac.uk',
     description='',
