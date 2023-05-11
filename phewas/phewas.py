@@ -1,11 +1,12 @@
 import csv
-from os.path import exists
-from typing import List
-
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+
+from typing import List
+from pathlib import Path
 from statsmodels.tools.sm_exceptions import PerfectSeparationError
+
 
 from general_utilities.association_resources import process_snp_or_gene_tar, build_transcript_table, get_gene_id
 from general_utilities.linear_model.linear_model import load_tarball_linear_model
@@ -37,18 +38,18 @@ class PheWAS:
                 gene_info = get_gene_id(gene, transcripts_table)
                 self._gene_infos.append(gene_info)
 
-    def _add_output(self, file: str) -> None:
+    def _add_output(self, file: Path) -> None:
         self._outputs.append(file)
 
-    def _extend_output(self, files: List[str]) -> None:
+    def _extend_output(self, files: List[Path]) -> None:
         self._outputs.extend(files)
 
-    def get_outputs(self) -> List[str]:
+    def get_outputs(self) -> List[Path]:
         return self._outputs
 
     def run_tool(self):
 
-        self._add_output('phenotypes_covariates.formatted.txt')
+        self._add_output(Path('phenotypes_covariates.formatted.txt'))
 
         # 2. Load the tarballs into separate genotypes dictionaries
         print("Loading Linear Model genotypes")
@@ -261,7 +262,7 @@ class PheWAS:
         for phenoname in self._association_pack.pheno_names:
             for tarball_prefix in self._association_pack.tarball_prefixes:
                 for chromosome in valid_staar_chromosomes:
-                    if exists(tarball_prefix + "." + chromosome + ".STAAR.matrix.rds"):
+                    if Path(tarball_prefix + "." + chromosome + ".STAAR.matrix.rds").exists():
                         thread_utility.launch_job(staar_genes,
                                                   tarball_prefix=tarball_prefix,
                                                   chromosome=chromosome,
