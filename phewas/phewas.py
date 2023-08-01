@@ -248,6 +248,8 @@ class PheWAS:
             thread_utility.launch_job(staar_null,
                                       phenoname=phenoname,
                                       is_binary=self._association_pack.is_binary,
+                                      sex=self._association_pack.sex,
+                                      ignore_base=self._association_pack.ignore_base_covariates,
                                       found_quantitative_covariates=self._association_pack.found_quantitative_covariates,
                                       found_categorical_covariates=self._association_pack.found_categorical_covariates)
         thread_utility.collect_futures()

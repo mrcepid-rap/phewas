@@ -3,7 +3,7 @@ import tarfile
 from os.path import exists
 
 from phewas.phewas_association_pack import PhewasProgramArgs, PhewasAssociationPack
-from runassociationtesting.ingest_data import *
+from general_utilities.import_utils.module_loader.ingest_data import *
 
 
 class PhewasIngestData(IngestData):
