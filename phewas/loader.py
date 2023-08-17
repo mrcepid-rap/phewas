@@ -1,7 +1,7 @@
 from phewas import phewas_ingester
 from phewas.phewas import PheWAS
 from phewas.phewas_association_pack import PhewasProgramArgs, PhewasAssociationPack
-from runassociationtesting.module_loader import ModuleLoader
+from general_utilities.import_utils.module_loader.module_loader import ModuleLoader
 
 
 class LoadModule(ModuleLoader):
