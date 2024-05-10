@@ -12,7 +12,7 @@ class PhewasIngestData(IngestData):
         super().__init__(parsed_options)
 
         # Put additional options/covariate processing required by this specific package here
-        is_snp_tar, is_gene_tar, named_prefix, tarball_prefixes = ingest_tarballs(parsed_options.association_tarballs)
+        is_snp_tar, is_gene_tar, tarball_prefixes = ingest_tarballs(parsed_options.association_tarballs)
 
         GeneticsLoader.ingest_sparse_matrix(parsed_options.sparse_grm,
                                             parsed_options.sparse_grm_sample)
