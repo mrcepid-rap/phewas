@@ -1,5 +1,8 @@
 ## Changelog
 
+* v1.0.4
+  * Removed method option to reflect changes in ingest_tarballs method from [general_utilities](https://github.com/mrcepid-rap/general_utilities)
+
 * v1.0.3
   * Updated dataclass of runtime arguments to properly call it's own super.__init__()
 
