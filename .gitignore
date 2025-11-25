@@ -1,0 +1,12 @@
+.idea/
+build/
+dx_run.log
+phewas.egg-info/
+phewas/__pycache__/
+test/__pycache__/
+test/dx_run.log
+test/temp_test_outputs/
+uv.lock
+
+# test data
+test/test_data/*

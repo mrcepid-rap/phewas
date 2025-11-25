@@ -28,6 +28,10 @@ class LoadModule(ModuleLoader):
                                        "'mergecollapsevariants'",
                                   type=self.dxfile_input, dest='association_tarballs', required=True,
                                   metavar=example_dxfile)
+        self._parser.add_argument('--bgen_index',
+                                  help="list of WES-derived bgen files and associated index/annotation",
+                                  type=self.dxfile_input, dest='bgen_index', required=True,
+                                  metavar=example_dxfile)
         self._parser.add_argument('--gene_ids',
                                   help="A valid ENST Gene ID OR Gene Symbol, or space-separated list of Symbols/IDs "
                                        "to extract carriers and phenotype/covariate information for. These ID(s) MUST "
