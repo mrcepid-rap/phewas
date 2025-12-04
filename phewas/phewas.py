@@ -1,7 +1,7 @@
 import csv
 import json
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 
 import dxpy
 import pandas as pd
@@ -172,29 +172,103 @@ class PheWAS:
         Run STAAR models for each gene and chromosome combination.
         """
 
+        # 0. Create the gene list for the R script
         if self._gene_infos:
             with open('staar.gene_list', 'w') as gene_list_file:
                 for gene_info in self._gene_infos:
                     gene_list_file.write(f"{gene_info.name}\n")
 
+        self._logger.info("Creating merged covariates file for STAAR null model...")
+        # Grab the first chromosome's sample file just to get the IDs
+        first_chrom = next(iter(self._chromosomes))
+        sample_path = self._association_pack.bgen_dict[first_chrom]["sample"].get_file_handle()
+
+        # Read sample file (BGEN format usually has 2 header rows, we skip the second type row)
+        sample = pd.read_csv(sample_path, sep=r"\s+", header=0, dtype={'ID_2': str})
+        sample = sample.drop(columns=["sex"], errors="ignore")
+        sample = sample.iloc[1:].reset_index(drop=True)  # Drop the "0 0 0 D D D..." row
+
+        # Read covariates
+        covar = pd.read_csv(self._association_pack.final_covariates, sep=' ', header=0, dtype={'IID': str})
+
+        # Merge BGEN IDs with Covariates
+        merged = sample.merge(covar, how="left", left_on="ID_2", right_on="IID")
+        merged = merged.drop(columns=["ID_1", "missing"], errors="ignore")
+        merged = merged.sort_values("ID_2")
+
+        # Remove rows with missing phenotype data
+        for phenoname in self._association_pack.pheno_names:
+            if phenoname in merged.columns:
+                merged = merged.dropna(subset=[phenoname])
+
+        # Remove rows with missing covariate data
+        required_cols = ['age', 'age_squared', 'batch']
+        if self._association_pack.sex == 2:
+            required_cols.append('sex')
+        for i in range(1, 11):
+            required_cols.append(f'PC{i}')
+        required_cols.extend(self._association_pack.found_quantitative_covariates)
+        required_cols.extend(self._association_pack.found_categorical_covariates)
+
+        # Only check columns that actually exist
+        required_cols = [col for col in required_cols if col in merged.columns]
+        merged = merged.dropna(subset=required_cols)
+
+        self._logger.info(f"After removing samples with missing data: {len(merged)} samples remain")
+
+        # Save this 'clean' file for the Null Model
+        merged = merged.drop(columns=['IID', 'FID'], errors='ignore')
+        merged = merged.rename(columns={'ID_2': 'FID'})
+        merged_cov_path = Path("merged_covariates_for_staar.tsv")
+        merged.to_csv(merged_cov_path, sep="\t", index=False)
+
         # 1. Run the STAAR NULL model
         self._logger.info("Running STAAR Null Model(s)...")
         thread_utility = ThreadUtility(self._association_pack.threads, thread_factor=1)
+
         for phenoname in self._association_pack.pheno_names:
-            thread_utility.launch_job(function=staar_null,
-                                      inputs={
-                                          'phenofile': self._association_pack.final_covariates,
-                                          'phenotype': phenoname,
-                                          'is_binary': self._association_pack.is_binary,
-                                          'ignore_base': self._association_pack.ignore_base_covariates,
-                                          'found_quantitative_covariates': self._association_pack.found_quantitative_covariates,
-                                          'found_categorical_covariates': self._association_pack.found_categorical_covariates,
-                                          'sex': self._association_pack.sex,
-                                          'sparse_kinship_file': self._association_pack.sparse_grm,
-                                          'sparse_kinship_samples': self._association_pack.sparse_grm_sample
-                                      }
-                                      )
+            # We wrap staar_null or define a helper to return (pheno, path)
+            # using the NEW merged_cov_path
+            thread_utility.launch_job(
+                function=staar_null,
+                inputs={
+                    'phenofile': merged_cov_path,  # Use the clean file!
+                    'phenotype': phenoname,
+                    'is_binary': self._association_pack.is_binary,
+                    'ignore_base': self._association_pack.ignore_base_covariates,
+                    'found_quantitative_covariates': self._association_pack.found_quantitative_covariates,
+                    'found_categorical_covariates': self._association_pack.found_categorical_covariates,
+                    'sex': self._association_pack.sex,
+                    'sparse_kinship_file': self._association_pack.sparse_grm,
+                    'sparse_kinship_samples': self._association_pack.sparse_grm_sample
+                }
+            )
         thread_utility.submit_and_monitor()
+
+        # Collect the null models.
+        # Note: staar_null returns a Path. We need to map it back to the phenotype.
+        # Assuming staar_null outputs a file named '{phenotype}.STAAR_null.rds' locally.
+        null_models = {}
+        for phenoname in self._association_pack.pheno_names:
+            expected_path = Path(f'{phenoname}.STAAR_null.rds')
+            if expected_path.exists():
+                null_models[phenoname] = expected_path
+            else:
+                raise FileNotFoundError(f"Null model for {phenoname} was not generated.")
+
+        null_model_samples = set(merged['FID'].astype(str))
+
+        for tarball_prefix in self._association_pack.tarball_prefixes:
+            for chromosome in self._chromosomes:
+                samples_path = Path(f"{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv")
+
+                if samples_path.exists():
+                    staar_samples_df = pd.read_csv(samples_path, sep='\t')
+                    # Keep only samples present in the Null Model
+                    staar_samples_df = staar_samples_df[
+                        staar_samples_df['sampID'].astype(str).isin(null_model_samples)
+                    ]
+                    staar_samples_df.to_csv(samples_path, sep='\t', index=False)
 
         # 2. Run the actual per-gene association tests
         self._logger.info("Running STAAR masks across chromosomes...")
@@ -203,54 +277,58 @@ class PheWAS:
         for phenoname in self._association_pack.pheno_names:
             for tarball_prefix in self._association_pack.tarball_prefixes:
                 for chromosome in self._chromosomes:
-                    staar_data = load_staar_genetic_data(
-                        tarball_prefix=tarball_prefix,
-                        bgen_prefix=chromosome
-                    )
 
+                    # ... (Existing code to load staar_data and valid_gene_ids) ...
+                    staar_data = load_staar_genetic_data(tarball_prefix, chromosome)
                     valid_gene_ids = {gene.name for gene in self._gene_infos}
+
                     genes_per_chunk = {
                         chunk: [gene for gene in genes.keys() if gene in valid_gene_ids]
                         for chunk, genes in staar_data.items()
                     }
 
                     for chunk, gene_list in genes_per_chunk.items():
-                        if not gene_list:
-                            continue
+                        if not gene_list: continue
 
+                        # Dump chunk json
                         subset_staar_data = {chunk: staar_data[chunk]}
                         chunk_json_path = Path(f"{tarball_prefix}.{chunk}.staar_chunk.json")
                         with chunk_json_path.open("w") as f:
                             json.dump(subset_staar_data, f, default=lambda o: list(o) if isinstance(o, set) else o)
 
                         working_chunk = self._association_pack.bgen_dict[chromosome]
-
                         exporter = ExportFileHandler(delete_on_upload=False)
-                        null_model = exporter.export_files(f'{phenoname}.STAAR_null.rds')
-                        staar_samples = exporter.export_files(f'{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv')
-                        variants_table = exporter.export_files(
+
+                        # Prepare file links
+                        null_model_link = exporter.export_files(null_models[phenoname])
+                        staar_samples_link = exporter.export_files(
+                            f'{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv')
+                        variants_table_link = exporter.export_files(
                             f'{tarball_prefix}.{chromosome}.STAAR.variants_table.tsv')
-                        chunk_file = exporter.export_files(chunk_json_path)
-                        transcripts_table = Path("transcripts_table.tsv")
-                        self._transcripts_table.to_csv(transcripts_table, sep='\t', index=True)
-                        transcripts_table = exporter.export_files(transcripts_table)
+                        chunk_file_link = exporter.export_files(chunk_json_path)
+
+                        transcripts_path = Path("transcripts_table.tsv")
+                        self._transcripts_table.to_csv(transcripts_path, sep='\t', index=True)
+                        transcripts_link = exporter.export_files(transcripts_path)
 
                         launcher.launch_job(
                             function=multithread_gene_model,
                             inputs={
-                                'null_model': null_model,
+                                'null_model': null_model_link,
                                 'pheno_name': phenoname,
                                 'tarball_prefix': tarball_prefix,
                                 'chromosome': chromosome,
                                 'genes': gene_list,
-                                'chunk_file': chunk_file,
-                                'bgen': working_chunk['bgen'],
-                                'index': working_chunk['index'],
-                                'sample': working_chunk['sample'],
-                                'staar_samples': staar_samples,
-                                'staar_variants': variants_table,
-                                'tarball_type': self._association_pack.tarball_type,
-                                'transcripts_table': transcripts_table
+                                'chunk_file': chunk_file_link,
+                                # CRITICAL: Send the link string, not the object
+                                'bgen': working_chunk['bgen'].get_input_str(),
+                                'index': working_chunk['index'].get_input_str(),
+                                'sample': working_chunk['sample'].get_input_str(),
+                                'staar_samples': staar_samples_link,
+                                'staar_variants': variants_table_link,
+                                # CRITICAL: Send string representation of enum
+                                'tarball_type': str(self._association_pack.tarball_type),
+                                'transcripts_table': transcripts_link
                             },
                             outputs=['output_model']
                         )
@@ -259,14 +337,27 @@ class PheWAS:
 
         completed_staar_chunks = []
         for result in launcher:
-            df = pd.read_csv(result['output_model'], sep='\t', index_col=0)
+            # Launcher automatically downloads outputs to local path
+            output_path = InputFileHandler(result['output_model']).get_file_handle()
+            df = pd.read_csv(output_path, sep='\t', index_col=0)
             completed_staar_chunks.append(df)
 
         if completed_staar_chunks:
-            combined_staar = pd.concat(completed_staar_chunks, axis=0).sort_values(by='start')
-            combined_staar.to_csv(f'{self._output_prefix}.genes.STAAR.stats.tsv', sep='\t', index=True)
+            combined_staar = pd.concat(completed_staar_chunks, axis=0)
+
+            # Merge with transcripts table to get coordinates
+            # We must do this BEFORE sorting
+            combined_staar = combined_staar.merge(
+                self._transcripts_table[['chrom', 'start', 'end']],
+                left_index=True,
+                right_index=True,
+                how='left'
+            )
+            combined_staar = combined_staar.sort_values(by='start')
+            # Write to file
             output_tsv = Path(f"{self._output_prefix}.genes.STAAR.stats.tsv")
-            outputs = bgzip_and_tabix(output_tsv, skip_row=1, sequence_row=2, begin_row=3, end_row=4)
+            combined_staar.to_csv(output_tsv, sep='\t', index=True)
+            outputs = bgzip_and_tabix(output_tsv, skip_row=1, sequence_row=14, begin_row=15, end_row=16)
             self._outputs.extend(outputs)
             self._logger.info("STAAR stats written to %s.genes.STAAR.stats.tsv", self._output_prefix)
         else:
@@ -275,7 +366,7 @@ class PheWAS:
 
 @dxpy.entry_point('multithread_gene_model')
 def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, genes, chunk_file, bgen, index, sample,
-                           staar_samples, staar_variants, tarball_type, transcripts_table) -> Path:
+                           staar_samples, staar_variants, tarball_type, transcripts_table) -> Dict[str, str]:
     """
     Run a STAAR gene model in a multithreaded way
 
@@ -295,26 +386,40 @@ def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, g
     :return: Path to the output STAAR results TSV file (post-annotation)
     """
 
-    # load our VM environment
+    # 1. SETUP & DOWNLOAD
+    # We must rebuild the command executor and file handlers
     _ = build_default_command_executor()
+
+    # Download inputs using InputFileHandler
     null_model = InputFileHandler(null_model).get_file_handle()
     staar_samples = InputFileHandler(staar_samples).get_file_handle()
     staar_variants = InputFileHandler(staar_variants).get_file_handle()
     chunk_file = InputFileHandler(chunk_file).get_file_handle()
     transcripts_table = InputFileHandler(transcripts_table).get_file_handle()
 
+    # BGEN files need download_now=True usually, or just get_file_handle
+    bgen_path = InputFileHandler(bgen).get_file_handle()
+    _ = InputFileHandler(index).get_file_handle()
+    sample_path = InputFileHandler(sample).get_file_handle()
+
     with open(chunk_file, "r") as f:
         staar_data = json.load(f)
 
-    # download our bgen files
-    bgen_path = bgen.get_file_handle()
-    _ = index.get_file_handle()
-    sample_path = sample.get_file_handle()
+    # 2. LOAD SAMPLES FOR FILTERING
+    # This file was filtered in the main class to only include IDs in the Null Model.
+    # We need the 'row' indices to subset the BGEN matrix.
+    staar_samples_df = pd.read_csv(staar_samples, sep='\t')
+    keep_rows = staar_samples_df['row'].values
 
     thread_utility = ThreadUtility()
 
     for gene in genes:
-        # generate a csr matrix from the bgen files
+        # Check if gene is valid in this chunk
+        if gene not in staar_data[chromosome]:
+            continue
+
+        # 3. GENERATE & SUBSET MATRIX
+        # Generate full matrix
         matrix, _ = generate_csr_matrix_from_bgen(
             bgen_path=bgen_path,
             sample_path=sample_path,
@@ -325,7 +430,10 @@ def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, g
             should_collapse_matrix=False
         )
 
-        # export matrix to file
+        # CRITICAL FIX: Subset matrix to match Null Model dimensions
+        matrix = matrix[keep_rows, :]
+
+        # Save the SUBSETTED matrix
         mmwrite(f"{tarball_prefix}.{chromosome}.STAAR.mtx", matrix)
 
         thread_utility.launch_job(
@@ -333,7 +441,7 @@ def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, g
             inputs={
                 'staar_null_path': null_model,
                 'pheno_name': pheno_name,
-                'gene': gene,  # single ENST ID string
+                'gene': gene,
                 'mask_name': tarball_prefix,
                 'staar_matrix': f"{tarball_prefix}.{chromosome}.STAAR.mtx",
                 'staar_samples': staar_samples,
@@ -343,20 +451,24 @@ def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, g
             outputs=['staar_result']
         )
     thread_utility.submit_and_monitor()
-    # Print a preliminary STAAR output
+
     completed_staar_files = []
-    # And gather the resulting futures
     for result in thread_utility:
-        # Each result is a dict with {'staar_result': STAARModelResult(...)}
         staar_result = result["staar_result"]
         completed_staar_files.append(staar_result)
 
     # Annotate STAAR output
     transcript = pd.read_csv(transcripts_table, sep='\t', index_col=0)
     output_model = Path(f'{chromosome}.staar_results.tsv')
+
     process_model_outputs(input_models=completed_staar_files,
                           output_path=output_model,
                           tarball_type=tarball_type,
                           transcripts_table=transcript)
 
-    return output_model
+    # 4. EXPORT & RETURN
+    # DX entry points must return a dictionary of links, not a Path object
+    exporter = ExportFileHandler()
+    uploaded_file = exporter.export_files(output_model)
+
+    return {"output_model": uploaded_file}
