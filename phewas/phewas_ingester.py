@@ -1,8 +1,7 @@
 import dxpy
-
-from general_utilities.import_utils.genetics_loader import GeneticsLoader
 from general_utilities.import_utils.import_lib import ingest_tarballs, ingest_wes_bgen, TarballType
 from general_utilities.import_utils.module_loader.ingest_data import IngestData
+
 from phewas.phewas_association_pack import PhewasProgramArgs, PhewasAssociationPack
 
 
@@ -18,7 +17,7 @@ class PhewasIngestData(IngestData):
         sparse_grm = parsed_options.sparse_grm.get_file_handle()
         sparse_grm_sample = parsed_options.sparse_grm_sample.get_file_handle()
 
-        if tarball_type is not TarballType.GENOMEWIDE:
+        if tarball_type not in (TarballType.SNP, TarballType.GENE) and parsed_options.gene_ids is None:
             raise dxpy.AppError('Must provide gene IDs when NOT using a SNP/GENE tarball!')
 
         # Put additional covariate processing specific to this module here
@@ -28,6 +27,4 @@ class PhewasIngestData(IngestData):
                                                         sparse_grm=sparse_grm,
                                                         sparse_grm_sample=sparse_grm_sample,
                                                         bgen_dict=bgen_dict,
-                                                        tarball_type=tarball_type,
-                                                        is_snp_tar=tarball_type == TarballType.SNP,
-                                                        is_gene_tar=tarball_type == TarballType.GENE))
+                                                        tarball_type=tarball_type))

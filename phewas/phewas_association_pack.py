@@ -33,7 +33,7 @@ class PhewasProgramArgs(ProgramArgs):
 class PhewasAssociationPack(AssociationPack):
 
     def __init__(self, association_pack: AssociationPack,
-                 is_snp_tar: bool, is_gene_tar: bool, tarball_prefixes: List[str], gene_ids: List[str], sparse_grm: Path,
+                 tarball_prefixes: List[str], gene_ids: List[str], sparse_grm: Path,
                  sparse_grm_sample: Path, bgen_dict: Dict[str, BGENInformation], tarball_type: TarballType):
 
         super().__init__(association_pack.is_binary, association_pack.sex, association_pack.threads,
@@ -42,9 +42,7 @@ class PhewasAssociationPack(AssociationPack):
                          association_pack.cmd_executor, association_pack.final_covariates, association_pack.inclusion_samples,
                          association_pack.exclusion_samples, association_pack.transcript_index)
 
-        self.is_snp_tar = is_snp_tar
-        self.is_gene_tar = is_gene_tar
-        self.is_non_standard_tar = is_snp_tar or is_gene_tar
+        self.tarball_type = TarballType
         self.tarball_prefixes = tarball_prefixes
         self.gene_ids = gene_ids
         self.sparse_grm = sparse_grm
