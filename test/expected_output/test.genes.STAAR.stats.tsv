@@ -1,2 +1,2 @@
-ENST	chrom	start	end	ENSG	MANE	transcript_length	SYMBOL	CANONICAL	BIOTYPE	cds_length	coord	manh.pos	MASK	MAF	pheno_name	n_var	cMAC	n_model	model_run	relatedness_correction	p_val_O	p_val_SKAT	p_val_burden	p_val_ACAT
-ENST00000641515	1	65419	71585	ENSG00000186092	NM_001005484.2	2618	OR4F5	True	protein_coding	981	chr1:65419-71585	2.0925903610613e-05	HC_PTV	MAF_001	phenotype	52	118	10000	True	False	0.12548414760548	0.0533418894025672	0.731623802973179	0.136157612295649
+ENST	MASK	MAF	pheno_name	n_var	cMAC	n_model	model_run	relatedness_correction	p_val_O	p_val_SKAT	p_val_burden	p_val_ACAT
+ENST00000641515	HC_PTV	MAF_001	phenotype	52	118	10000	True	False	0.12548414760548	0.0533418894025672	0.731623802973178	0.136157612295649
