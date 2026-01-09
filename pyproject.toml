@@ -21,7 +21,7 @@ dependencies = [
     "zstd==1.5.5.1",
     "toml==0.10.2",
     "pytest>=7.4.0,<8.0.0",
-    "general-utilities @ git+https://github.com/mrcepid-rap/general_utilities.git@feature/sync-extract-with-genutils"
+    "general-utilities @ git+https://github.com/mrcepid-rap/general_utilities.git@feature/align-v2-with-itself"
 
 ]
 

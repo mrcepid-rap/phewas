@@ -48,7 +48,20 @@ class LoadModule(ModuleLoader):
                                   metavar=example_dxfile)
 
     def _parse_options(self) -> PhewasProgramArgs:
-        return PhewasProgramArgs(**vars(self._parser.parse_args(self._split_options(self._input_args))))
+        """Parse command line options and return a PhewasProgramArgs object.
+
+        This method includes a safety bit to ensure covariate lists are not None
+        to prevent downstream iteration errors in the base class.
+        """
+        # Parse the raw args into a dictionary
+        parsed_dict = vars(self._parser.parse_args(self._split_options(self._input_args)))
+        # Ensure these are always iterables (lists)
+        if parsed_dict.get('categorical_covariates') is None:
+            parsed_dict['categorical_covariates'] = []
+        if parsed_dict.get('quantitative_covariates') is None:
+            parsed_dict['quantitative_covariates'] = []
+        # Return the typed object
+        return PhewasProgramArgs(**parsed_dict)
 
     def _ingest_data(self, parsed_options: PhewasProgramArgs) -> PhewasAssociationPack:
         ingested_data = phewas_ingester.PhewasIngestData(parsed_options)
