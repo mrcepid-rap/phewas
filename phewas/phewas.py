@@ -160,14 +160,9 @@ class PheWAS:
                               tarball_type=self._association_pack.tarball_type,
                               transcripts_table=self._transcripts_table)
 
-        output_path = Path(f'{self._output_prefix}.genes.glm.stats.tsv')
-        df = pd.read_csv(output_path, sep='\t')
-        df = df.sort_values(by='pheno_name')
-        df.to_csv(output_path, sep='\t', index=False)
+        self._logger.info(f"Linear model stats written to {self._output_prefix}.genes.glm.stats.tsv")
 
-        self._logger.info("Linear model stats written to %s.genes.glm.stats.tsv", self._output_prefix)
-
-    def _run_staar_null_models(self) -> None:
+    def _run_staar_null_models(self, pheno_data: Dict[str, Tuple[pd.DataFrame, set]]) -> None:
         """
         Runs the STAAR Null Models using the specified phenotypes and parameters. This
         method utilizes multi-threading to handle multiple phenotypes in parallel and
@@ -177,13 +172,16 @@ class PheWAS:
         The method ensures that all threads are properly submitted and monitored until
         completion.
 
+        :param pheno_data: A dictionary from _prepare_staar_pheno_data
         :raises Exception: If any errors occur while launching jobs or monitoring threads.
         """
 
         self._logger.info("Running STAAR Null Model(s)...")
         thread_utility = ThreadUtility(self._association_pack.threads, thread_factor=1)
         for phenoname in self._association_pack.pheno_names:
+            pheno_merged_df, _ = pheno_data[phenoname]
             pheno_merged_cov_path = Path(f"merged_covariates_for_staar.{phenoname}.tsv")
+            pheno_merged_df.to_csv(pheno_merged_cov_path, sep="\t", index=False)
             thread_utility.launch_job(
                 function=staar_null,
                 inputs={
@@ -201,19 +199,20 @@ class PheWAS:
         thread_utility.submit_and_monitor()
 
     def _prepare_staar_pheno_data(self, sample_df: pd.DataFrame, covar_df: pd.DataFrame,
-                                  required_cols: List[str]) -> None:
+                                  required_cols: List[str]) -> Dict[str, Tuple[pd.DataFrame, set]]:
         """
         Prepares and cleans phenotype-specific data by merging sample and covariate DataFrames,
-        removing rows with missing phenotype or required covariate data, and saving the cleaned files and
-        sample lists for each phenotype.
+        removing rows with missing phenotype or required covariate data.
 
         :param sample_df: DataFrame with sample IDs and related info.
         :param covar_df: DataFrame with covariate data matched by sample IDs.
         :param required_cols: List of required covariate column names.
-        :return: None. Outputs are written as files.
+        :return: A dictionary where keys are phenonames and values are tuples of
+                 (the filtered phenotype DataFrame, a set of sample IDs for the null model).
         """
 
         self._logger.info("Preparing phenotype-specific data files...")
+        pheno_data = {}
         for phenoname in self._association_pack.pheno_names:
             # Merge BGEN IDs with Covariates for the current phenotype
             pheno_merged = sample_df.merge(covar_df, how="left", left_on="ID_2", right_on="IID")
@@ -231,18 +230,13 @@ class PheWAS:
             self._logger.info(
                 f"For phenotype '{phenoname}', after removing samples with missing data: {len(pheno_merged)} samples remain")
 
-            # Save this 'clean' file for the Null Model
+            # Prep data for return
             pheno_merged = pheno_merged.drop(columns=['IID', 'FID'], errors='ignore')
             pheno_merged = pheno_merged.rename(columns={'ID_2': 'FID'})
-            pheno_merged_cov_path = Path(f"merged_covariates_for_staar.{phenoname}.tsv")
-            pheno_merged.to_csv(pheno_merged_cov_path, sep="\t", index=False)
-
-            # Create a file with sample IDs used in the null model
             pheno_null_model_samples = set(pheno_merged['FID'].astype(str))
-            samples_list_path = Path(f"null_samples.{phenoname}.txt")
-            with samples_list_path.open('w') as f:
-                for sample_id in pheno_null_model_samples:
-                    f.write(f"{sample_id}\n")
+            pheno_data[phenoname] = (pheno_merged, pheno_null_model_samples)
+
+        return pheno_data
 
     def _run_staar_models(self):
         """
@@ -280,11 +274,11 @@ class PheWAS:
 
         # 1. Create all phenotype-specific data files first
         self._logger.info("Preparing phenotype-specific data files...")
-        self._prepare_staar_pheno_data(sample, covar, required_cols)
+        pheno_data = self._prepare_staar_pheno_data(sample, covar, required_cols)
 
         # 2. Run the STAAR NULL model for each phenotype in parallel
         self._logger.info("Running STAAR Null Model(s)...")
-        self._run_staar_null_models()
+        self._run_staar_null_models(pheno_data)
 
         # 3. Run the actual per-gene association tests
         self._logger.info("Running STAAR masks across chromosomes...")
@@ -310,7 +304,11 @@ class PheWAS:
 
                     # Prepare file links
                     null_model_link = exporter.export_files(null_model_path)
+                    _, pheno_null_model_samples = pheno_data[phenoname]
                     null_samples_path = Path(f"null_samples.{phenoname}.txt")
+                    with null_samples_path.open('w') as f:
+                        for sample_id in pheno_null_model_samples:
+                            f.write(f"{sample_id}\n")
                     null_samples_link = exporter.export_files(null_samples_path)
                     variants_table_link = exporter.export_files(
                         f'{tarball_prefix}.{chromosome}.STAAR.variants_table.tsv')
@@ -345,19 +343,16 @@ class PheWAS:
             df = pd.read_csv(output_path, sep='\t', index_col=0)
             completed_staar_chunks.append(df)
 
-        if completed_staar_chunks:
-            combined_staar = pd.concat(completed_staar_chunks, axis=0)
-            combined_staar = combined_staar.sort_values(by='pheno_name')
+        combined_staar = pd.concat(completed_staar_chunks, axis=0)
+        combined_staar = combined_staar.sort_values(by='pheno_name')
 
-            # Write to file
-            output_tsv = Path(f"{self._output_prefix}.genes.STAAR.stats.tsv")
-            combined_staar.to_csv(output_tsv, sep='\t', index=True)
-            outputs = bgzip_and_tabix(output_tsv, comment_char="E", skip_row=1, sequence_row=14, begin_row=15,
-                                      end_row=16, force=True)
-            self._outputs.extend(outputs)
-            self._logger.info("STAAR stats written to %s.genes.STAAR.stats.tsv", self._output_prefix)
-        else:
-            self._logger.warning("No STAAR results generated.")
+        # Write to file
+        output_tsv = Path(f"{self._output_prefix}.genes.STAAR.stats.tsv")
+        combined_staar.to_csv(output_tsv, sep='\t', index=True)
+        outputs = bgzip_and_tabix(output_tsv, comment_char="E", skip_row=1, sequence_row=14, begin_row=15,
+                                  end_row=16, force=True)
+        self._outputs.extend(outputs)
+        self._logger.info("STAAR stats written to %s.genes.STAAR.stats.tsv", self._output_prefix)
 
 
 @dxpy.entry_point('multithread_gene_model')
