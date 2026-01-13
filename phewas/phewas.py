@@ -140,7 +140,7 @@ class PheWAS:
                                 'linear_model_pack': null_model,
                                 'genotype_table': genetic_data,
                                 'gene': gene_info.name,
-                                'mask_name': tarball_prefix,
+                                'mask_name': tarball_prefix.name,
                                 'is_binary': self._association_pack.is_binary,
                                 'always_run_corrected': True
                             },
@@ -316,7 +316,7 @@ class PheWAS:
                         inputs={
                             'null_model': null_model_link,
                             'pheno_name': phenoname,
-                            'tarball_prefix': tarball_prefix,
+                            'tarball_prefix': tarball_prefix.name,
                             'chromosome': chromosome,
                             'genes': valid_gene_ids,
                             # CRITICAL: Send the link string, not the object
