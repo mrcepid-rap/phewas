@@ -59,35 +59,35 @@ def temporary_path(tmp_path, monkeypatch):
             ["test.genes.glm.stats.tsv.gz", "test.genes.STAAR.stats.tsv.gz", "test.genes.STAAR_glm.stats.tsv.gz"]
     ),
     # the second tests a single gene with two phenotypes
-    # (
-    #         "test2",
-    #         (
-    #                 "--association_tarballs test_data/HC_PTV-MAF_001.tar.gz "
-    #                 "--bgen_index test_data/bgen_locs.tsv "
-    #                 "--sparse_grm test_data/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx "
-    #                 "--sparse_grm_sample test_data/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx.sampleIDs.txt "
-    #                 "--gene_ids OR4F5 "
-    #                 "--phenofile test_data/phenotype2.tsv "
-    #                 "--transcript_index test_data/transcripts.tsv.gz "
-    #                 "--base_covariates test_data/base_covariates.covariates"
-    #         ),
-    #         ["test2.genes.glm.stats.tsv.gz", "test2.genes.STAAR.stats.tsv.gz", "test2.genes.STAAR_glm.stats.tsv.gz"]
-    # ),
-    # # the third tests multiple genes with two phenotypes
-    # (
-    #         "test3",
-    #         (
-    #                 "--association_tarballs test_data/HC_PTV-MAF_001.tar.gz "
-    #                 "--bgen_index test_data/bgen_locs.tsv "
-    #                 "--sparse_grm test_data/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx "
-    #                 "--sparse_grm_sample test_data/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx.sampleIDs.txt "
-    #                 "--gene_ids OR4F5 LAPTM5 "
-    #                 "--phenofile test_data/phenotype2.tsv "
-    #                 "--transcript_index test_data/transcripts.tsv.gz "
-    #                 "--base_covariates test_data/base_covariates.covariates"
-    #         ),
-    #         ["test3.genes.glm.stats.tsv.gz", "test3.genes.STAAR.stats.tsv.gz", "test3.genes.STAAR_glm.stats.tsv.gz"]
-    # ),
+    (
+            "test2",
+            (
+                    "--association_tarballs test_data/HC_PTV-MAF_001.tar.gz "
+                    "--bgen_index test_data/bgen_locs.tsv "
+                    "--sparse_grm test_data/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx "
+                    "--sparse_grm_sample test_data/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx.sampleIDs.txt "
+                    "--gene_ids OR4F5 "
+                    "--phenofile test_data/phenotype2.tsv "
+                    "--transcript_index test_data/transcripts.tsv.gz "
+                    "--base_covariates test_data/base_covariates.covariates"
+            ),
+            ["test2.genes.glm.stats.tsv.gz", "test2.genes.STAAR.stats.tsv.gz", "test2.genes.STAAR_glm.stats.tsv.gz"]
+    ),
+    # the third tests multiple genes with two phenotypes
+    (
+            "test3",
+            (
+                    "--association_tarballs test_data/HC_PTV-MAF_001.tar.gz "
+                    "--bgen_index test_data/bgen_locs.tsv "
+                    "--sparse_grm test_data/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx "
+                    "--sparse_grm_sample test_data/sparseGRM_470K_Autosomes_QCd.sparseGRM.mtx.sampleIDs.txt "
+                    "--gene_ids OR4F5 LAPTM5 "
+                    "--phenofile test_data/phenotype2.tsv "
+                    "--transcript_index test_data/transcripts.tsv.gz "
+                    "--base_covariates test_data/base_covariates.covariates"
+            ),
+            ["test3.genes.glm.stats.tsv.gz", "test3.genes.STAAR.stats.tsv.gz", "test3.genes.STAAR_glm.stats.tsv.gz"]
+    ),
 ])
 def test_phewas_load_module_run(output_prefix, input_args, expected_files, temporary_path):
     # 1. Run the module
