@@ -42,7 +42,6 @@ class PhewasAssociationPack(AssociationPack):
                          association_pack.cmd_executor, association_pack.final_covariates, association_pack.inclusion_samples,
                          association_pack.exclusion_samples, association_pack.transcript_index)
 
-        self.tarball_type = TarballType
         self.tarball_prefixes = tarball_prefixes
         self.gene_ids = gene_ids
         self.sparse_grm = sparse_grm
