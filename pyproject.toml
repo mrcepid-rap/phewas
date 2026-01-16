@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 
 [project]
 name = "phewas"
-version = "1.0.4"
+version = "2.0.0"
 description = ""
 authors = [
     { name = "Eugene Gardner", email = "eugene.gardner@mrc-epid.cam.ac.uk" }
@@ -21,7 +21,7 @@ dependencies = [
     "zstd==1.5.5.1",
     "toml==0.10.2",
     "pytest>=7.4.0,<8.0.0",
-    "general-utilities @ git+https://github.com/mrcepid-rap/general_utilities.git@feature/align-v2-with-itself"
+    "general-utilities @ git+https://github.com/mrcepid-rap/general_utilities.git@v2.0.0"
 
 ]
 
