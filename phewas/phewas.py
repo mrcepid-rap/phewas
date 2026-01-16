@@ -102,7 +102,6 @@ class PheWAS:
                 phenotype=phenoname,
                 phenofile=self._association_pack.final_covariates,
                 is_binary=self._association_pack.is_binary,
-                ignore_base=self._association_pack.ignore_base_covariates,
                 found_quantitative_covariates=self._association_pack.found_quantitative_covariates,
                 found_categorical_covariates=self._association_pack.found_categorical_covariates
             )
@@ -141,7 +140,7 @@ class PheWAS:
                                 'linear_model_pack': null_model,
                                 'genotype_table': genetic_data,
                                 'gene': gene_info.name,
-                                'mask_name': tarball_prefix,
+                                'mask_name': tarball_prefix.name,
                                 'is_binary': self._association_pack.is_binary,
                                 'always_run_corrected': True
                             },
@@ -188,7 +187,6 @@ class PheWAS:
                     'phenofile': pheno_merged_cov_path,
                     'phenotype': phenoname,
                     'is_binary': self._association_pack.is_binary,
-                    'ignore_base': self._association_pack.ignore_base_covariates,
                     'found_quantitative_covariates': self._association_pack.found_quantitative_covariates,
                     'found_categorical_covariates': self._association_pack.found_categorical_covariates,
                     'sex': self._association_pack.sex,
@@ -318,7 +316,7 @@ class PheWAS:
                         inputs={
                             'null_model': null_model_link,
                             'pheno_name': phenoname,
-                            'tarball_prefix': tarball_prefix,
+                            'tarball_prefix': tarball_prefix.name,
                             'chromosome': chromosome,
                             'genes': valid_gene_ids,
                             # CRITICAL: Send the link string, not the object
