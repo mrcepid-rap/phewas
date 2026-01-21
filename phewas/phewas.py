@@ -35,6 +35,7 @@ class PheWAS:
         self._association_pack = association_pack
         self._output_prefix = output_prefix
         self._outputs = []
+
         # Initialize data structures
         self.genetic_map = defaultdict(list)
 
@@ -44,13 +45,11 @@ class PheWAS:
         # Figure out genes/SNPlist to run...
         if self._association_pack.tarball_type in (TarballType.SNP, TarballType.GENE):
             self._logger.info("Initializing non-standard tarball extraction (SNP/GENE tar)")
-
             gene_info, returned_chromosomes = process_snp_or_gene_tar(
                 self._association_pack.tarball_type == TarballType.SNP,
                 self._association_pack.tarball_type == TarballType.GENE,
                 self._association_pack.tarball_prefixes[0]
             )
-
             for chromosome in returned_chromosomes:
                 self.genetic_map[chromosome].append(gene_info)
         else:
@@ -76,8 +75,6 @@ class PheWAS:
                             f"({', '.join(chromosomes)})"
                         )
                         self.genetic_map[chunk].append(gene_info)
-        
-        self._chromosomes = set(self.genetic_map.keys())
 
     def _add_output(self, file: Path) -> None:
         self._outputs.append(file)
@@ -244,19 +241,9 @@ class PheWAS:
         Run STAAR models for each gene and chromosome combination.
         """
 
-        # 0. Create the gene list for the R script
-        # First, get a unique list of all genes across all chromosomes from the genetic_map
-        all_gene_infos = [info for genes in self.genetic_map.values() for info in genes]
-        unique_genes = list({gene.name: gene for gene in all_gene_infos}.values())
-
-        if unique_genes:
-            with open('staar.gene_list', 'w') as gene_list_file:
-                for gene_info in unique_genes:
-                    gene_list_file.write(f"{gene_info.name}\n")
-
         self._logger.info("Creating merged covariates file for STAAR null model...")
         # Grab the first chromosome's sample file just to get the IDs
-        first_chrom = next(iter(self._chromosomes))
+        first_chrom = next(iter(self.genetic_map))
         sample_path = self._association_pack.bgen_dict[first_chrom]["sample"].get_file_handle()
 
         # Read sample file (BGEN format usually has 2 header rows, we skip the second type row)
@@ -288,7 +275,10 @@ class PheWAS:
         # 3. Run the actual per-gene association tests
         self._logger.info("Running STAAR masks across chromosomes...")
         launcher = joblauncher_factory(download_on_complete=True)
-        valid_gene_ids = [gene.name for gene in unique_genes]
+        valid_gene_ids = [
+            gene_info.name
+            for gene_infos in self.genetic_map.values() for gene_info in gene_infos
+        ]
 
         # set the exporter
         exporter = ExportFileHandler(delete_on_upload=False)
@@ -304,7 +294,7 @@ class PheWAS:
                 raise FileNotFoundError(f"Null model for {phenoname} was not generated.")
 
             for tarball_prefix in self._association_pack.tarball_prefixes:
-                for chromosome in self._chromosomes:
+                for chromosome in self.genetic_map:
                     working_chunk = self._association_pack.bgen_dict[chromosome]
 
                     # Prepare file links
