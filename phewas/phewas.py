@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pathlib import Path
 from typing import List, Dict, Tuple
 
@@ -34,20 +35,24 @@ class PheWAS:
         self._association_pack = association_pack
         self._output_prefix = output_prefix
         self._outputs = []
-        self._chromosomes = set()
+        # Initialize data structures
+        self.genetic_map = defaultdict(list)
 
         # build the transcripts table
         self._transcripts_table = build_transcript_table(transcripts_path=self._association_pack.transcript_index)
 
         # Figure out genes/SNPlist to run...
-        self._gene_infos = []
         if self._association_pack.tarball_type in (TarballType.SNP, TarballType.GENE):
+            self._logger.info("Initializing non-standard tarball extraction (SNP/GENE tar)")
+
             gene_info, returned_chromosomes = process_snp_or_gene_tar(
                 self._association_pack.tarball_type == TarballType.SNP,
                 self._association_pack.tarball_type == TarballType.GENE,
-                self._association_pack.tarball_prefixes[0])
-            self._gene_infos.append(gene_info)
-            self._chromosomes = returned_chromosomes
+                self._association_pack.tarball_prefixes[0]
+            )
+
+            for chromosome in returned_chromosomes:
+                self.genetic_map[chromosome].append(gene_info)
         else:
             for gene_id in self._association_pack.gene_ids:
                 # get_gene_id handles gene symbols and ENST IDs
@@ -64,9 +69,15 @@ class PheWAS:
                     except FileNotFoundError:
                         self._logger.debug(f"Variant table for chunk {chunk} not found, skipping.")
                         continue
+
                     if chromosomes:
-                        self._logger.info(f"{gene_info['SYMBOL']} found in {chunk} ({', '.join(chromosomes)})")
-                        self._chromosomes.add(chunk)
+                        self._logger.info(
+                            f"{gene_info['SYMBOL']} found in {chunk} "
+                            f"({', '.join(chromosomes)})"
+                        )
+                        self.genetic_map[chunk].append(gene_info)
+        
+        self._chromosomes = set(self.genetic_map.keys())
 
     def _add_output(self, file: Path) -> None:
         self._outputs.append(file)
@@ -115,20 +126,7 @@ class PheWAS:
         self._logger.info("Loading linear model genotypes and running models...")
         thread_utility = ThreadUtility(self._association_pack.threads, thread_factor=1)
 
-        for chromosome in self._chromosomes:
-            # Determine which genes are in this chromosome
-            genes_in_chunk = []
-            for gene_info in self._gene_infos:
-                if process_gene_or_snp_wgs(
-                        identifier=gene_info.name,
-                        tarball_prefix=self._association_pack.tarball_prefixes[0],
-                        chunk=chromosome
-                ):
-                    genes_in_chunk.append(gene_info)
-
-            if not genes_in_chunk:
-                continue
-
+        for chromosome, genes_in_chunk in self.genetic_map.items():
             # Load data for this chunk
             for tarball_prefix in self._association_pack.tarball_prefixes:
                 _, genetic_data = linear_model.load_linear_model_genetic_data(
@@ -247,9 +245,13 @@ class PheWAS:
         """
 
         # 0. Create the gene list for the R script
-        if self._gene_infos:
+        # First, get a unique list of all genes across all chromosomes from the genetic_map
+        all_gene_infos = [info for genes in self.genetic_map.values() for info in genes]
+        unique_genes = list({gene.name: gene for gene in all_gene_infos}.values())
+
+        if unique_genes:
             with open('staar.gene_list', 'w') as gene_list_file:
-                for gene_info in self._gene_infos:
+                for gene_info in unique_genes:
                     gene_list_file.write(f"{gene_info.name}\n")
 
         self._logger.info("Creating merged covariates file for STAAR null model...")
@@ -286,7 +288,7 @@ class PheWAS:
         # 3. Run the actual per-gene association tests
         self._logger.info("Running STAAR masks across chromosomes...")
         launcher = joblauncher_factory(download_on_complete=True)
-        valid_gene_ids = [gene.name for gene in self._gene_infos]
+        valid_gene_ids = [gene.name for gene in unique_genes]
 
         # set the exporter
         exporter = ExportFileHandler(delete_on_upload=False)
