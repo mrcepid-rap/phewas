@@ -49,16 +49,21 @@ class PheWAS:
             self._gene_infos.append(gene_info)
             self._chromosomes = returned_chromosomes
         else:
-            for gene in self._association_pack.gene_ids:
-                gene_info = get_gene_id(gene, self._transcripts_table)
-                self._gene_infos.append(gene_info)
+            for gene_id in self._association_pack.gene_ids:
+                # get_gene_id handles gene symbols and ENST IDs
+                gene_info = get_gene_id(gene_id, self._transcripts_table)
 
+                # Search for this gene across all chunks
                 for chunk in self._association_pack.bgen_dict:
-                    chromosomes = process_gene_or_snp_wgs(
-                        identifier=gene_info.name,
-                        tarball_prefix=self._association_pack.tarball_prefixes[0],
-                        chunk=chunk
-                    )
+                    try:
+                        chromosomes = process_gene_or_snp_wgs(
+                            identifier=gene_info.name,
+                            tarball_prefix=self._association_pack.tarball_prefixes[0],
+                            chunk=chunk
+                        )
+                    except FileNotFoundError:
+                        self._logger.debug(f"Variant table for chunk {chunk} not found, skipping.")
+                        continue
                     if chromosomes:
                         self._logger.info(f"{gene_info['SYMBOL']} found in {chunk} ({', '.join(chromosomes)})")
                         self._chromosomes.add(chunk)
