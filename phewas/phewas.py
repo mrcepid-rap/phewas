@@ -289,6 +289,7 @@ class PheWAS:
                     bgen_samples = pd.read_csv(sample_path, sep=r'\s+', header=0, dtype={'ID_2': str})
                     bgen_samples = bgen_samples.iloc[1:].reset_index(drop=True)
                     bgen_samples = bgen_samples.rename(columns={'ID_2': 'FID'})
+                    print(bgen_samples.head(20))
 
                     # Load the STAAR samples table which contains row indices
                     base_samples_path = Path(f"{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv")
@@ -298,15 +299,15 @@ class PheWAS:
                         continue
 
                     # Filter the STAAR samples table to include only samples present in the null model
-                    staar_samples_df = pd.read_csv(base_samples_path, sep='\t')
+                    staar_samples_df = pd.read_csv(base_samples_path, sep='\t', dtype={'sampID': str})
 
-                    # Coerce merge keys to strings to avoid dtype mismatches.
-                    staar_samples_df['sampID'] = staar_samples_df['sampID'].astype(str)
+                    print(bgen_samples.head(20))
                     bgen_samples.index = bgen_samples.index.astype(str)
+                    bgen_samples['FID'] = bgen_samples['FID'].astype(str)
 
                     staar_samples_df = staar_samples_df.merge(bgen_samples['FID'], left_on='sampID', right_index=True)
 
-                    staar_samples_df['sampID'] = staar_samples_df['sampID'].astype('int64')
+                    print(staar_samples_df.head(20))
 
                     # New debugging block to investigate empty filtered_df
                     LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
