@@ -464,11 +464,20 @@ def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, g
 
 
 def filter_staar_samples(null_samples_path: Path, sample_path: Path, tarball_prefix: str, chromosome: str,
-                         pheno_name: str) -> Tuple[List[int], Path]:
+                         pheno_name: str, base_samples_path: Path) -> Tuple[List[int], Path]:
     """
     Filters STAAR samples to include only those present in the null model for a given phenotype and chromosome.
     Returns the filtered row indices and the path to the saved filtered samples file.
+
+    :param null_samples_path: Path to file with sample IDs from the null model.
+    :param sample_path: Path to the BGEN sample file.
+    :param tarball_prefix: Prefix for STAAR tarball files.
+    :param chromosome: Chromosome identifier.
+    :param pheno_name: Phenotype name for output file naming.
+    :param base_samples_path: Path to the STAAR samples table file.
+    :return: Tuple of filtered row indices and path to filtered samples file.
     """
+
     with null_samples_path.open('r') as f:
         pheno_null_model_samples = {line.strip() for line in f}
 
@@ -476,15 +485,12 @@ def filter_staar_samples(null_samples_path: Path, sample_path: Path, tarball_pre
     bgen_samples = pd.read_csv(sample_path, sep='\s+', header=0, dtype={'ID_2': str})
     bgen_samples = bgen_samples.iloc[1:].reset_index(drop=True)
     bgen_samples = bgen_samples.rename(columns={'ID_2': 'FID'})
-
-    # Read the samples table from the STAAR run
-    base_samples_path = Path(f"{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv")
-    staar_samples_df = pd.read_csv(base_samples_path, sep='\t')
-
-    # Ensure both columns used for merging are strings
-    staar_samples_df['sampID'] = staar_samples_df['sampID'].astype(str)
     bgen_samples = bgen_samples.reset_index()  # index will be used for merging
     bgen_samples['index'] = bgen_samples['index'].astype(str)
+
+    # Read the samples table from the STAAR run
+    staar_samples_df = pd.read_csv(base_samples_path, sep='\t')
+    staar_samples_df['sampID'] = staar_samples_df['sampID'].astype(str)
 
     # Merge using string types
     staar_samples_df = staar_samples_df.merge(
@@ -501,4 +507,3 @@ def filter_staar_samples(null_samples_path: Path, sample_path: Path, tarball_pre
     filtered_df.to_csv(filtered_samples_path, sep='\t', index=False)
 
     return filtered_df['row'].values, filtered_samples_path
-
