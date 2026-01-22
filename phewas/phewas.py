@@ -488,6 +488,7 @@ def filter_staar_samples(null_samples_path: Path, sample_path: Path, tarball_pre
 
     # Then read the samples table from the STAAR run, which has row numbers
     staar_samples_df = pd.read_csv(base_samples_path, sep='\t')
+    staar_samples_df['sampID'] = staar_samples_df['sampID'].astype('int64')
 
     # And merge them together to get sample IDs
     staar_samples_df = staar_samples_df.merge(bgen_samples['FID'], left_on='sampID', right_index=True)
