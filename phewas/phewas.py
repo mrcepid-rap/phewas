@@ -305,6 +305,27 @@ class PheWAS:
                     bgen_samples.index = bgen_samples.index.astype(str)
 
                     staar_samples_df = staar_samples_df.merge(bgen_samples['FID'], left_on='sampID', right_index=True)
+
+                    staar_samples_df['sampID'] = staar_samples_df['sampID'].astype('int64')
+
+                    # New debugging block to investigate empty filtered_df
+                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
+                                f"Size of null model samples: {len(pheno_null_model_samples)}")
+                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
+                                f"Example null model samples: {list(pheno_null_model_samples)[:5]}")
+                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
+                                f"staar_samples_df shape after merge: {staar_samples_df.shape}")
+                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
+                                f"staar_samples_df after merge head:\n{staar_samples_df.head().to_string()}")
+                    merged_fids = set(staar_samples_df['FID'].dropna().astype(str))
+                    overlap = merged_fids.intersection(pheno_null_model_samples)
+                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
+                                f"Found {len(overlap)} overlapping samples between merged FIDs and null model samples.")
+                    if not overlap:
+                        LOGGER.warning(f"DEBUG [{phenoname}/{chromosome}]: "
+                                       f"No overlap found! Example merged FIDs: {list(merged_fids)[:5]}")
+                    # End new debugging block
+
                     filtered_df = staar_samples_df[staar_samples_df['FID'].astype(str).isin(pheno_null_model_samples)]
 
                     # Write the filtered, phenotype-specific samples table
@@ -521,6 +542,12 @@ def multithread_gene_model(null_model: str, pheno_name: str, tarball_prefix: str
 
     keep_rows = filtered_samples_df['row'].values.tolist()
     LOGGER.info(f"DEBUG: Extracted {len(keep_rows)} keep_rows. First 5: {keep_rows[:5]}")
+
+    # If there are no overlapping samples for this phenotype/chromosome combo, exit gracefully.
+    if not keep_rows:
+        LOGGER.warning(f"No overlapping samples found for phenotype {pheno_name} on chromosome {chromosome}. "
+                       f"Skipping STAAR analysis for this chunk.")
+        return {"output_model": ""}
 
     # 3. PROCESS GENES: In parallel, process each gene to generate a matrix and launch a STAAR job.
     thread_utility = ThreadUtility()
