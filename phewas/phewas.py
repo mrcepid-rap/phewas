@@ -307,6 +307,8 @@ class PheWAS:
                     null_samples_link = exporter.export_files(null_samples_path)
                     variants_table_link = exporter.export_files(
                         f'{tarball_prefix}.{chromosome}.STAAR.variants_table.tsv')
+                    samples_table_link = exporter.export_files(
+                        f'{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv')
 
                     launcher.launch_job(
                         function=multithread_gene_model,
@@ -322,6 +324,7 @@ class PheWAS:
                             'sample': working_chunk['sample'].get_input_str(),
                             'null_samples': null_samples_link,
                             'staar_variants': variants_table_link,
+                            'staar_samples': samples_table_link,
                             # CRITICAL: Send string representation of enum
                             'tarball_type': str(self._association_pack.tarball_type),
                             'transcripts_table': transcripts_link
@@ -352,7 +355,8 @@ class PheWAS:
 
 @dxpy.entry_point('multithread_gene_model')
 def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, genes, bgen, index, sample,
-                           null_samples, staar_variants, tarball_type, transcripts_table) -> Dict[str, str]:
+                           null_samples, staar_variants, staar_samples, tarball_type, transcripts_table) -> Dict[
+    str, str]:
     """
     Run a STAAR gene model in a multithreaded way. This function is designed to be run on a single chromosome.
 
@@ -376,6 +380,7 @@ def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, g
     null_model = InputFileHandler(null_model).get_file_handle()
     null_samples_path = InputFileHandler(null_samples).get_file_handle()
     staar_variants = InputFileHandler(staar_variants).get_file_handle()
+    staar_samples_path = InputFileHandler(staar_samples).get_file_handle()
     transcripts_table = InputFileHandler(transcripts_table).get_file_handle()
     bgen_path = InputFileHandler(bgen).get_file_handle()
     _ = InputFileHandler(index).get_file_handle()
@@ -384,7 +389,7 @@ def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, g
     # 2. LOAD STAAR DATA & SAMPLES FOR FILTERING
     staar_data = load_staar_genetic_data(tarball_prefix, chromosome)
     keep_rows, filtered_samples_path = filter_staar_samples(null_samples_path, sample_path, tarball_prefix, chromosome,
-                                                            pheno_name)
+                                                            pheno_name, staar_samples_path)
 
     # 3. PROCESS GENES IN CHUNKS
     thread_utility = ThreadUtility()
@@ -459,7 +464,7 @@ def multithread_gene_model(null_model, pheno_name, tarball_prefix, chromosome, g
 
 
 def filter_staar_samples(null_samples_path: Path, sample_path: Path, tarball_prefix: str, chromosome: str,
-                         pheno_name: str) -> Tuple[List[int], Path]:
+                         pheno_name: str, base_samples_path: Path) -> Tuple[List[int], Path]:
     """
     Filters STAAR samples to include only those present in the null model for a given phenotype and chromosome.
     Returns the filtered row indices and the path to the saved filtered samples file.
@@ -469,6 +474,7 @@ def filter_staar_samples(null_samples_path: Path, sample_path: Path, tarball_pre
     :param tarball_prefix: Prefix for STAAR tarball files.
     :param chromosome: Chromosome identifier.
     :param pheno_name: Phenotype name for output file naming.
+    :param base_samples_path: Path to the STAAR samples table file.
     :return: Tuple of filtered row indices and path to filtered samples file.
     """
 
@@ -481,7 +487,6 @@ def filter_staar_samples(null_samples_path: Path, sample_path: Path, tarball_pre
     bgen_samples = bgen_samples.rename(columns={'ID_2': 'FID'})
 
     # Then read the samples table from the STAAR run, which has row numbers
-    base_samples_path = Path(f"{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv")
     staar_samples_df = pd.read_csv(base_samples_path, sep='\t')
 
     # And merge them together to get sample IDs
