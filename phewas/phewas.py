@@ -391,6 +391,8 @@ class PheWAS:
             self._logger.info("STAAR stats written to %s.genes.STAAR.stats.tsv", self._output_prefix)
 
 
+LOGGER = MRCLogger(__name__).get_logger()
+
 def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path: Path, keep_rows: List[int],
                         tarball_prefix: str, chromosome: str, pheno_name: str, null_model: Path,
                         filtered_samples_path: Path, staar_variants: Path) -> dict:
@@ -412,6 +414,7 @@ def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path
     :param staar_variants: Path to the STAAR variants table.
     :return: A dictionary of parameters for `thread_utility.launch_job`.
     """
+    LOGGER.info(f"DEBUG: Processing gene {gene} for pheno {pheno_name} on chrom {chromosome}")
     # Generate a sparse matrix of genotype dosages for a given gene's variants
     matrix, _ = generate_csr_matrix_from_bgen(
         bgen_path=bgen_path,
@@ -422,6 +425,7 @@ def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path
         end=gene_data['max'],
         should_collapse_matrix=False
     )
+    LOGGER.info(f"DEBUG: Gene {gene}: Generated matrix with shape {matrix.shape}")
     
     # Validate that the indices we are about to use for subsetting are valid
     if keep_rows and max(keep_rows) >= matrix.shape[0]:
@@ -431,23 +435,28 @@ def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path
 
     # Subset the matrix to include only samples that are part of the null model
     matrix = matrix[keep_rows, :]
+    LOGGER.info(f"DEBUG: Gene {gene}: Subset matrix to shape {matrix.shape}")
+
     # Write the subset matrix to a file for input into STAAR
     matrix_path = f"{tarball_prefix}.{chromosome}.{gene}.STAAR.mtx"
     mmwrite(matrix_path, matrix)
+    LOGGER.info(f"DEBUG: Gene {gene}: Wrote matrix to {matrix_path}")
 
     # Return a dictionary of parameters that can be used to launch a staar_genes job
+    job_inputs = {
+        'staar_null_path': null_model,
+        'pheno_name': pheno_name,
+        'gene': gene,
+        'mask_name': tarball_prefix,
+        'staar_matrix': matrix_path,
+        'staar_samples': filtered_samples_path,
+        'staar_variants': staar_variants,
+        'out_dir': Path('.'),
+    }
+    LOGGER.info(f"DEBUG: Gene {gene}: Launching staar_genes with inputs: {job_inputs}")
     return {
         'function': staar_genes,
-        'inputs': {
-            'staar_null_path': null_model,
-            'pheno_name': pheno_name,
-            'gene': gene,
-            'mask_name': tarball_prefix,
-            'staar_matrix': matrix_path,
-            'staar_samples': filtered_samples_path,
-            'staar_variants': staar_variants,
-            'out_dir': Path('.'),
-        },
+        'inputs': job_inputs,
         'outputs': ['staar_result']
     }
 
@@ -476,19 +485,42 @@ def multithread_gene_model(null_model: str, pheno_name: str, tarball_prefix: str
     """
 
     # 1. SETUP & DOWNLOAD: Download all required files from DNAnexus.
+    LOGGER.info("DEBUG: ---- Inside multithread_gene_model ----")
+    LOGGER.info(f"DEBUG: Received inputs: null_model={null_model}, pheno_name={pheno_name}, "
+                f"tarball_prefix={tarball_prefix}, chromosome={chromosome}, "
+                f"genes={[g for g in genes[:5]]}..., filtered_samples={filtered_samples}, "
+                f"staar_variants={staar_variants}")
+
     null_model_path = InputFileHandler(null_model).get_file_handle()
+    LOGGER.info(f"DEBUG: null_model_path: {null_model_path}")
     filtered_samples_path = InputFileHandler(filtered_samples).get_file_handle()
+    LOGGER.info(f"DEBUG: filtered_samples_path: {filtered_samples_path}")
     staar_variants_path = InputFileHandler(staar_variants).get_file_handle()
+    LOGGER.info(f"DEBUG: staar_variants_path: {staar_variants_path}")
     transcripts_table_path = InputFileHandler(transcripts_table).get_file_handle()
+    LOGGER.info(f"DEBUG: transcripts_table_path: {transcripts_table_path}")
     bgen_path = InputFileHandler(bgen).get_file_handle()
+    LOGGER.info(f"DEBUG: bgen_path: {bgen_path}")
     _ = InputFileHandler(index).get_file_handle()
     sample_path = InputFileHandler(sample).get_file_handle()
+    LOGGER.info(f"DEBUG: sample_path: {sample_path}")
 
     # 2. LOAD & FILTER: Load STAAR genetic data and identify samples to keep.
     # The 'filtered_samples' file contains the harmonized subset of samples for this specific phenotype.
     staar_data = load_staar_genetic_data(tarball_prefix, chromosome)
+    LOGGER.info(f"DEBUG: Loaded staar_data for {len(staar_data)} chunks.")
+
     filtered_samples_df = pd.read_csv(filtered_samples_path, sep='\t')
+    LOGGER.info(f"DEBUG: Loaded filtered_samples_df from {filtered_samples_path}. "
+                f"Shape: {filtered_samples_df.shape}")
+    LOGGER.info("DEBUG: filtered_samples_df.head():\n" + filtered_samples_df.head().to_string())
+    import io
+    buf = io.StringIO()
+    filtered_samples_df.info(buf=buf)
+    LOGGER.info("DEBUG: filtered_samples_df.info():\n" + buf.getvalue())
+
     keep_rows = filtered_samples_df['row'].values.tolist()
+    LOGGER.info(f"DEBUG: Extracted {len(keep_rows)} keep_rows. First 5: {keep_rows[:5]}")
 
     # 3. PROCESS GENES: In parallel, process each gene to generate a matrix and launch a STAAR job.
     thread_utility = ThreadUtility()
