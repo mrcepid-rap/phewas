@@ -412,6 +412,7 @@ def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path
     :param staar_variants: Path to the STAAR variants table.
     :return: A dictionary of parameters for `thread_utility.launch_job`.
     """
+    # Generate a sparse matrix of genotype dosages for a given gene's variants
     matrix, _ = generate_csr_matrix_from_bgen(
         bgen_path=bgen_path,
         sample_path=sample_path,
@@ -421,10 +422,20 @@ def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path
         end=gene_data['max'],
         should_collapse_matrix=False
     )
+    
+    # Validate that the indices we are about to use for subsetting are valid
+    if keep_rows and max(keep_rows) >= matrix.shape[0]:
+        raise ValueError(f"An invalid sample index was found for gene {gene}. "
+                         f"Max index: {max(keep_rows)}, Matrix rows: {matrix.shape[0]}. "
+                         f"This suggests a mismatch between the STAAR samples table and the BGEN file.")
+
+    # Subset the matrix to include only samples that are part of the null model
     matrix = matrix[keep_rows, :]
+    # Write the subset matrix to a file for input into STAAR
     matrix_path = f"{tarball_prefix}.{chromosome}.{gene}.STAAR.mtx"
     mmwrite(matrix_path, matrix)
 
+    # Return a dictionary of parameters that can be used to launch a staar_genes job
     return {
         'function': staar_genes,
         'inputs': {
@@ -464,7 +475,7 @@ def multithread_gene_model(null_model: str, pheno_name: str, tarball_prefix: str
     :return: A dictionary containing the DNAnexus file-ID of the output STAAR results TSV.
     """
 
-    # 1. SETUP & DOWNLOAD
+    # 1. SETUP & DOWNLOAD: Download all required files from DNAnexus.
     null_model_path = InputFileHandler(null_model).get_file_handle()
     filtered_samples_path = InputFileHandler(filtered_samples).get_file_handle()
     staar_variants_path = InputFileHandler(staar_variants).get_file_handle()
@@ -473,15 +484,17 @@ def multithread_gene_model(null_model: str, pheno_name: str, tarball_prefix: str
     _ = InputFileHandler(index).get_file_handle()
     sample_path = InputFileHandler(sample).get_file_handle()
 
-    # 2. LOAD STAAR DATA & SAMPLES FOR FILTERING
+    # 2. LOAD & FILTER: Load STAAR genetic data and identify samples to keep.
+    # The 'filtered_samples' file contains the harmonized subset of samples for this specific phenotype.
     staar_data = load_staar_genetic_data(tarball_prefix, chromosome)
     filtered_samples_df = pd.read_csv(filtered_samples_path, sep='\t')
     keep_rows = filtered_samples_df['row'].values.tolist()
 
-    # 3. PROCESS GENES IN PARALLEL
+    # 3. PROCESS GENES: In parallel, process each gene to generate a matrix and launch a STAAR job.
     thread_utility = ThreadUtility()
     valid_gene_ids = set(genes)
 
+    # STAAR data is stored in chunks, so we iterate through them.
     genes_per_chunk = {
         chunk: [gene for gene in chunk_genes.keys() if gene in valid_gene_ids]
         for chunk, chunk_genes in staar_data.items()
@@ -491,6 +504,7 @@ def multithread_gene_model(null_model: str, pheno_name: str, tarball_prefix: str
         if not gene_list:
             continue
         for gene in gene_list:
+            # The _process_staar_gene helper function does the main work for each gene.
             job_params = _process_staar_gene(
                 gene=gene,
                 gene_data=staar_data[chunk][gene],
@@ -508,19 +522,23 @@ def multithread_gene_model(null_model: str, pheno_name: str, tarball_prefix: str
 
     thread_utility.submit_and_monitor()
 
-    # 4. COLLECT RESULTS & ANNOTATE
+    # 4. COLLECT & ANNOTATE: Gather results from all STAAR jobs and annotate them.
     completed_staar_files = [result["staar_result"] for result in thread_utility]
 
-    transcript_df = pd.read_csv(transcripts_table_path, sep='\t', index_col=0)
-    output_model = Path(f'{pheno_name}.{chromosome}.staar_results.tsv')
+    if completed_staar_files:
+        transcript_df = pd.read_csv(transcripts_table_path, sep='\t', index_col=0)
+        output_model = Path(f'{pheno_name}.{chromosome}.staar_results.tsv')
 
-    process_model_outputs(input_models=completed_staar_files,
-                          output_path=output_model,
-                          tarball_type=tarball_type,
-                          transcripts_table=transcript_df)
+        process_model_outputs(input_models=completed_staar_files,
+                              output_path=output_model,
+                              tarball_type=tarball_type,
+                              transcripts_table=transcript_df)
 
-    # 5. EXPORT & RETURN
-    exporter = ExportFileHandler()
-    uploaded_file = exporter.export_files(output_model)
+        # 5. EXPORT: Upload the final, annotated results file to DNAnexus.
+        exporter = ExportFileHandler()
+        uploaded_file = exporter.export_files(output_model)
 
-    return {"output_model": uploaded_file}
+        return {"output_model": uploaded_file}
+    else:
+        # If no genes were processed, return an empty output.
+        return {"output_model": ""}
