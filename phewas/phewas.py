@@ -273,6 +273,9 @@ class PheWAS:
         self._run_staar_null_models(pheno_data)
 
         # 3. Filter STAAR sample tables for each phenotype and upload them
+        # This is required because PheWAS can be run on multiple phenotypes, and each
+        # phenotype may have a different set of samples that are valid for analysis
+        # after accounting for missing covariates or phenotype values.
         self._logger.info("Filtering STAAR sample tables by phenotype...")
         pheno_filtered_samples = {}
         exporter = ExportFileHandler(delete_on_upload=False)
@@ -281,25 +284,35 @@ class PheWAS:
             for tarball_prefix in self._association_pack.tarball_prefixes:
                 pheno_filtered_samples[phenoname][tarball_prefix.name] = {}
                 for chromosome in self.genetic_map:
+                    # Get the original sample file for this chromosome to map sample IDs
                     sample_path = self._association_pack.bgen_dict[chromosome]["sample"].get_file_handle()
                     bgen_samples = pd.read_csv(sample_path, sep=r'\s+', header=0, dtype={'ID_2': str})
                     bgen_samples = bgen_samples.iloc[1:].reset_index(drop=True)
                     bgen_samples = bgen_samples.rename(columns={'ID_2': 'FID'})
 
+                    # Load the STAAR samples table which contains row indices
                     base_samples_path = Path(f"{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv")
                     if not base_samples_path.exists():
                         self._logger.warning(
                             f"Could not find STAAR samples table: {base_samples_path}, skipping filtering.")
                         continue
 
+                    # Filter the STAAR samples table to include only samples present in the null model
                     staar_samples_df = pd.read_csv(base_samples_path, sep='\t')
+
+                    # Coerce merge keys to strings to avoid dtype mismatches.
+                    staar_samples_df['sampID'] = staar_samples_df['sampID'].astype(str)
+                    bgen_samples.index = bgen_samples.index.astype(str)
+
                     staar_samples_df = staar_samples_df.merge(bgen_samples['FID'], left_on='sampID', right_index=True)
                     filtered_df = staar_samples_df[staar_samples_df['FID'].astype(str).isin(pheno_null_model_samples)]
 
+                    # Write the filtered, phenotype-specific samples table
                     filtered_samples_path = Path(
                         f"{tarball_prefix.name}.{chromosome}.{phenoname}.STAAR.samples_table.tsv")
                     filtered_df.to_csv(filtered_samples_path, sep='\t', index=False)
 
+                    # Upload the filtered table and store its link for the compute job
                     link = exporter.export_files(filtered_samples_path)
                     pheno_filtered_samples[phenoname][tarball_prefix.name][chromosome] = link
 
@@ -498,20 +511,16 @@ def multithread_gene_model(null_model: str, pheno_name: str, tarball_prefix: str
     # 4. COLLECT RESULTS & ANNOTATE
     completed_staar_files = [result["staar_result"] for result in thread_utility]
 
-    if completed_staar_files:
-        transcript_df = pd.read_csv(transcripts_table_path, sep='\t', index_col=0)
-        output_model = Path(f'{pheno_name}.{chromosome}.staar_results.tsv')
+    transcript_df = pd.read_csv(transcripts_table_path, sep='\t', index_col=0)
+    output_model = Path(f'{pheno_name}.{chromosome}.staar_results.tsv')
 
-        process_model_outputs(input_models=completed_staar_files,
-                              output_path=output_model,
-                              tarball_type=tarball_type,
-                              transcripts_table=transcript_df)
+    process_model_outputs(input_models=completed_staar_files,
+                          output_path=output_model,
+                          tarball_type=tarball_type,
+                          transcripts_table=transcript_df)
 
-        # 5. EXPORT & RETURN
-        exporter = ExportFileHandler()
-        uploaded_file = exporter.export_files(output_model)
+    # 5. EXPORT & RETURN
+    exporter = ExportFileHandler()
+    uploaded_file = exporter.export_files(output_model)
 
-        return {"output_model": uploaded_file}
-    else:
-        # Need to return something...
-        return {"output_model": ""}
+    return {"output_model": uploaded_file}
