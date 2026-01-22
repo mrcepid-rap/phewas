@@ -26,6 +26,8 @@ from scipy.io import mmwrite
 
 from phewas.phewas_association_pack import PhewasAssociationPack
 
+LOGGER = MRCLogger(__name__).get_logger()
+
 
 class PheWAS:
 
@@ -291,10 +293,6 @@ class PheWAS:
                     bgen_samples = bgen_samples.rename(columns={'ID_2': 'FID'})
                     # Load the STAAR samples table which contains row indices
                     base_samples_path = Path(f"{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv")
-                    if not base_samples_path.exists():
-                        self._logger.warning(
-                            f"Could not find STAAR samples table: {base_samples_path}, skipping filtering.")
-                        continue
 
                     # Filter the STAAR samples table to include only samples present in the null model
                     staar_samples_df = pd.read_csv(base_samples_path, sep='\t')
@@ -304,24 +302,6 @@ class PheWAS:
                     staar_samples_df['sampID'] = staar_samples_df['sampID'].astype(str)
 
                     staar_samples_df = staar_samples_df.merge(bgen_samples, left_on='sampID', right_on='FID')
-
-                    # New debugging block to investigate empty filtered_df
-                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
-                                f"Size of null model samples: {len(pheno_null_model_samples)}")
-                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
-                                f"Example null model samples: {list(pheno_null_model_samples)[:5]}")
-                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
-                                f"staar_samples_df shape after merge: {staar_samples_df.shape}")
-                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
-                                f"staar_samples_df after merge head:\n{staar_samples_df.head().to_string()}")
-                    merged_fids = set(staar_samples_df['FID'].dropna().astype(str))
-                    overlap = merged_fids.intersection(pheno_null_model_samples)
-                    LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
-                                f"Found {len(overlap)} overlapping samples between merged FIDs and null model samples.")
-                    if not overlap:
-                        LOGGER.warning(f"DEBUG [{phenoname}/{chromosome}]: "
-                                       f"No overlap found! Example merged FIDs: {list(merged_fids)[:5]}")
-                    # End new debugging block
 
                     filtered_df = staar_samples_df[staar_samples_df['FID'].astype(str).isin(pheno_null_model_samples)]
 
@@ -409,9 +389,6 @@ class PheWAS:
             self._logger.info("STAAR stats written to %s.genes.STAAR.stats.tsv", self._output_prefix)
 
 
-LOGGER = MRCLogger(__name__).get_logger()
-
-
 def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path: Path, keep_rows: List[int],
                         tarball_prefix: str, chromosome: str, pheno_name: str, null_model: Path,
                         filtered_samples_path: Path, staar_variants: Path) -> dict:
@@ -433,7 +410,6 @@ def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path
     :param staar_variants: Path to the STAAR variants table.
     :return: A dictionary of parameters for `thread_utility.launch_job`.
     """
-    LOGGER.info(f"DEBUG: Processing gene {gene} for pheno {pheno_name} on chrom {chromosome}")
     # Generate a sparse matrix of genotype dosages for a given gene's variants
     matrix, _ = generate_csr_matrix_from_bgen(
         bgen_path=bgen_path,
@@ -444,22 +420,13 @@ def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path
         end=gene_data['max'],
         should_collapse_matrix=False
     )
-    LOGGER.info(f"DEBUG: Gene {gene}: Generated matrix with shape {matrix.shape}")
-
-    # Validate that the indices we are about to use for subsetting are valid
-    if keep_rows and max(keep_rows) >= matrix.shape[0]:
-        raise ValueError(f"An invalid sample index was found for gene {gene}. "
-                         f"Max index: {max(keep_rows)}, Matrix rows: {matrix.shape[0]}. "
-                         f"This suggests a mismatch between the STAAR samples table and the BGEN file.")
 
     # Subset the matrix to include only samples that are part of the null model
     matrix = matrix[keep_rows, :]
-    LOGGER.info(f"DEBUG: Gene {gene}: Subset matrix to shape {matrix.shape}")
 
     # Write the subset matrix to a file for input into STAAR
     matrix_path = f"{tarball_prefix}.{chromosome}.{gene}.STAAR.mtx"
     mmwrite(matrix_path, matrix)
-    LOGGER.info(f"DEBUG: Gene {gene}: Wrote matrix to {matrix_path}")
 
     # Return a dictionary of parameters that can be used to launch a staar_genes job
     job_inputs = {
@@ -472,7 +439,6 @@ def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path
         'staar_variants': staar_variants,
         'out_dir': Path('.'),
     }
-    LOGGER.info(f"DEBUG: Gene {gene}: Launching staar_genes with inputs: {job_inputs}")
     return {
         'function': staar_genes,
         'inputs': job_inputs,
@@ -504,48 +470,22 @@ def multithread_gene_model(null_model: str, pheno_name: str, tarball_prefix: str
     """
 
     # 1. SETUP & DOWNLOAD: Download all required files from DNAnexus.
-    LOGGER.info("DEBUG: ---- Inside multithread_gene_model ----")
-    LOGGER.info(f"DEBUG: Received inputs: null_model={null_model}, pheno_name={pheno_name}, "
-                f"tarball_prefix={tarball_prefix}, chromosome={chromosome}, "
-                f"genes={[g for g in genes[:5]]}..., filtered_samples={filtered_samples}, "
-                f"staar_variants={staar_variants}")
-
+    LOGGER.info("Running STAAR gene model for chromosome %s, phenotype %s, and mask %s",
+                chromosome, pheno_name, tarball_prefix)
     null_model_path = InputFileHandler(null_model).get_file_handle()
-    LOGGER.info(f"DEBUG: null_model_path: {null_model_path}")
     filtered_samples_path = InputFileHandler(filtered_samples).get_file_handle()
-    LOGGER.info(f"DEBUG: filtered_samples_path: {filtered_samples_path}")
     staar_variants_path = InputFileHandler(staar_variants).get_file_handle()
-    LOGGER.info(f"DEBUG: staar_variants_path: {staar_variants_path}")
     transcripts_table_path = InputFileHandler(transcripts_table).get_file_handle()
-    LOGGER.info(f"DEBUG: transcripts_table_path: {transcripts_table_path}")
     bgen_path = InputFileHandler(bgen).get_file_handle()
-    LOGGER.info(f"DEBUG: bgen_path: {bgen_path}")
     _ = InputFileHandler(index).get_file_handle()
     sample_path = InputFileHandler(sample).get_file_handle()
-    LOGGER.info(f"DEBUG: sample_path: {sample_path}")
 
     # 2. LOAD & FILTER: Load STAAR genetic data and identify samples to keep.
     # The 'filtered_samples' file contains the harmonized subset of samples for this specific phenotype.
     staar_data = load_staar_genetic_data(tarball_prefix, chromosome)
-    LOGGER.info(f"DEBUG: Loaded staar_data for {len(staar_data)} chunks.")
 
     filtered_samples_df = pd.read_csv(filtered_samples_path, sep='\t')
-    LOGGER.info(f"DEBUG: Loaded filtered_samples_df from {filtered_samples_path}. "
-                f"Shape: {filtered_samples_df.shape}")
-    LOGGER.info("DEBUG: filtered_samples_df.head():\n" + filtered_samples_df.head().to_string())
-    import io
-    buf = io.StringIO()
-    filtered_samples_df.info(buf=buf)
-    LOGGER.info("DEBUG: filtered_samples_df.info():\n" + buf.getvalue())
-
     keep_rows = filtered_samples_df['row'].values.tolist()
-    LOGGER.info(f"DEBUG: Extracted {len(keep_rows)} keep_rows. First 5: {keep_rows[:5]}")
-
-    # If there are no overlapping samples for this phenotype/chromosome combo, exit gracefully.
-    if not keep_rows:
-        LOGGER.warning(f"No overlapping samples found for phenotype {pheno_name} on chromosome {chromosome}. "
-                       f"Skipping STAAR analysis for this chunk.")
-        return {"output_model": ""}
 
     # 3. PROCESS GENES: In parallel, process each gene to generate a matrix and launch a STAAR job.
     thread_utility = ThreadUtility()
@@ -582,20 +522,16 @@ def multithread_gene_model(null_model: str, pheno_name: str, tarball_prefix: str
     # 4. COLLECT & ANNOTATE: Gather results from all STAAR jobs and annotate them.
     completed_staar_files = [result["staar_result"] for result in thread_utility]
 
-    if completed_staar_files:
-        transcript_df = pd.read_csv(transcripts_table_path, sep='\t', index_col=0)
-        output_model = Path(f'{pheno_name}.{chromosome}.staar_results.tsv')
+    transcript_df = pd.read_csv(transcripts_table_path, sep='\t', index_col=0)
+    output_model = Path(f'{pheno_name}.{chromosome}.staar_results.tsv')
 
-        process_model_outputs(input_models=completed_staar_files,
-                              output_path=output_model,
-                              tarball_type=tarball_type,
-                              transcripts_table=transcript_df)
+    process_model_outputs(input_models=completed_staar_files,
+                          output_path=output_model,
+                          tarball_type=tarball_type,
+                          transcripts_table=transcript_df)
 
-        # 5. EXPORT: Upload the final, annotated results file to DNAnexus.
-        exporter = ExportFileHandler()
-        uploaded_file = exporter.export_files(output_model)
+    # 5. EXPORT: Upload the final, annotated results file
+    exporter = ExportFileHandler()
+    uploaded_file = exporter.export_files(output_model)
 
-        return {"output_model": uploaded_file}
-    else:
-        # If no genes were processed, return an empty output.
-        return {"output_model": ""}
+    return {"output_model": uploaded_file}
