@@ -288,6 +288,7 @@ class PheWAS:
                     sample_path = self._association_pack.bgen_dict[chromosome]["sample"].get_file_handle()
                     bgen_samples = pd.read_csv(sample_path, sep=r'\s+', header=0, dtype={'ID_2': str})
                     bgen_samples = bgen_samples.iloc[1:].reset_index(drop=True)
+                    bgen_samples = bgen_samples.rename(columns={'ID_2': 'FID'})
                     # Load the STAAR samples table which contains row indices
                     base_samples_path = Path(f"{tarball_prefix}.{chromosome}.STAAR.samples_table.tsv")
                     if not base_samples_path.exists():
@@ -303,7 +304,6 @@ class PheWAS:
                     staar_samples_df['sampID'] = staar_samples_df['sampID'].astype(str)
 
                     staar_samples_df = staar_samples_df.merge(bgen_samples, left_on='sampID', right_on='FID')
-
 
                     # New debugging block to investigate empty filtered_df
                     LOGGER.info(f"DEBUG [{phenoname}/{chromosome}]: "
@@ -411,6 +411,7 @@ class PheWAS:
 
 LOGGER = MRCLogger(__name__).get_logger()
 
+
 def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path: Path, keep_rows: List[int],
                         tarball_prefix: str, chromosome: str, pheno_name: str, null_model: Path,
                         filtered_samples_path: Path, staar_variants: Path) -> dict:
@@ -444,7 +445,7 @@ def _process_staar_gene(gene: str, gene_data: dict, bgen_path: Path, sample_path
         should_collapse_matrix=False
     )
     LOGGER.info(f"DEBUG: Gene {gene}: Generated matrix with shape {matrix.shape}")
-    
+
     # Validate that the indices we are about to use for subsetting are valid
     if keep_rows and max(keep_rows) >= matrix.shape[0]:
         raise ValueError(f"An invalid sample index was found for gene {gene}. "
