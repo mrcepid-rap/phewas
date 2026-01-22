@@ -301,7 +301,7 @@ class PheWAS:
                     # Filter the STAAR samples table to include only samples present in the null model
                     staar_samples_df = pd.read_csv(base_samples_path, sep='\t', dtype={'sampID': str})
 
-                    print(bgen_samples.head(20))
+                    print(staar_samples_df.head(20))
                     bgen_samples.index = bgen_samples.index.astype(str)
                     bgen_samples['FID'] = bgen_samples['FID'].astype(str)
 
